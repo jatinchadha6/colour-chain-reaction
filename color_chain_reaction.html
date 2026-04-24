@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Color Chain Reaction</title>
+  <style>
+    /* ── Reset & Base ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #1a1a2e;
+      color: #eee;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      padding: 20px 10px 40px;
+    }
+
+    /* ── Header ── */
+    header {
+      text-align: center;
+      margin-bottom: 18px;
+    }
+    header h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      letter-spacing: 2px;
+      background: linear-gradient(90deg, #e24b4a, #ef9f27, #378add, #7f77dd);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    header p.tagline {
+      font-size: 0.85rem;
+      color: #aaa;
+      margin-top: 4px;
+      letter-spacing: 0.5px;
+    }
+
+    /* ── Game Container ── */
+    #game-container {
+      background: #16213e;
+      border-radius: 16px;
+      padding: 20px;
+      max-width: 520px;
+      width: 100%;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    }
+
+    /* ── Stats Bar ── */
+    #stats-bar {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .stat-box {
+      flex: 1;
+      background: #0f3460;
+      border-radius: 10px;
+      padding: 10px 8px;
+      text-align: center;
+    }
+    .stat-label {
+      font-size: 10px;
+      color: #aaa;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 4px;
+    }
+    .stat-val {
+      font-size: 22px;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    /* ── Target Bar ── */
+    #target-section {
+      margin-bottom: 10px;
+    }
+    #target-label {
+      font-size: 11px;
+      color: #aaa;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 6px;
+    }
+    #target-bar {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .target-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .target-cell {
+      width: 26px;
+      height: 26px;
+      border-radius: 6px;
+      border: 2px solid transparent;
+      position: relative;
+      transition: opacity 0.3s;
+    }
+    .target-cell.done {
+      opacity: 0.35;
+    }
+    .target-cell.done::after {
+      content: '✓';
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      color: #fff;
+      font-weight: bold;
+    }
+    .target-size {
+      font-size: 11px;
+      color: #ccc;
+    }
+
+    /* ── Moves Bar ── */
+    #moves-section {
+      margin-bottom: 12px;
+    }
+    #moves-label {
+      font-size: 11px;
+      color: #aaa;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 6px;
+    }
+    #moves-dots {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      align-items: center;
+    }
+    .move-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #378add;
+      transition: background 0.2s;
+    }
+    .move-dot.used {
+      background: #2a2a4a;
+      border: 1px solid #444;
+    }
+    #moves-count {
+      font-size: 12px;
+      color: #aaa;
+      margin-left: 8px;
+    }
+
+    /* ── Grid ── */
+    #grid {
+      display: grid;
+      grid-template-columns: repeat(8, 1fr);
+      gap: 5px;
+      margin-bottom: 14px;
+    }
+    .cell {
+      aspect-ratio: 1;
+      border-radius: 7px;
+      cursor: pointer;
+      transition: transform 0.1s, filter 0.15s, opacity 0.2s;
+      border: none;
+      outline: none;
+      position: relative;
+    }
+    .cell:hover {
+      transform: scale(1.12);
+      filter: brightness(1.2);
+      z-index: 2;
+    }
+    .cell:active {
+      transform: scale(0.94);
+    }
+    .cell.empty {
+      background: #0a0a1a;
+      cursor: default;
+      border: 1px dashed #2a2a4a;
+    }
+    .cell.empty:hover {
+      transform: none;
+      filter: none;
+    }
+    .cell.highlighted {
+      filter: brightness(1.3);
+      transform: scale(1.08);
+      z-index: 2;
+    }
+    /* Explode animation */
+    @keyframes pop {
+      0%   { transform: scale(1); opacity: 1; }
+      40%  { transform: scale(1.45); opacity: 0.8; }
+      100% { transform: scale(0); opacity: 0; }
+    }
+    .cell.exploding {
+      animation: pop 0.28s ease-out forwards;
+      pointer-events: none;
+    }
+    /* Ripple on hover for connected cells */
+    @keyframes pulse-ring {
+      0%   { box-shadow: 0 0 0 0 rgba(255,255,255,0.4); }
+      70%  { box-shadow: 0 0 0 6px rgba(255,255,255,0); }
+      100% { box-shadow: 0 0 0 0 rgba(255,255,255,0); }
+    }
+    .cell.pulsing {
+      animation: pulse-ring 0.5s ease-out;
+    }
+
+    /* ── Message ── */
+    #msg {
+      text-align: center;
+      font-size: 14px;
+      color: #ef9f27;
+      min-height: 22px;
+      margin-bottom: 12px;
+      font-weight: 500;
+      letter-spacing: 0.3px;
+    }
+
+    /* ── Buttons ── */
+    #btn-row {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+    }
+    button.action {
+      padding: 9px 22px;
+      border-radius: 8px;
+      border: 1px solid #378add;
+      background: transparent;
+      color: #378add;
+      font-size: 13px;
+      font-family: inherit;
+      cursor: pointer;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      transition: background 0.2s, color 0.2s;
+    }
+    button.action:hover {
+      background: #378add;
+      color: #fff;
+    }
+    button.action.danger {
+      border-color: #e24b4a;
+      color: #e24b4a;
+    }
+    button.action.danger:hover {
+      background: #e24b4a;
+      color: #fff;
+    }
+
+    /* ── How To Play ── */
+    #how-to-play {
+      margin-top: 24px;
+      max-width: 520px;
+      width: 100%;
+    }
+    #how-to-play h2 {
+      font-size: 1rem;
+      color: #aaa;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 12px;
+      border-bottom: 1px solid #222;
+      padding-bottom: 6px;
+    }
+    .rule {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      margin-bottom: 10px;
+      font-size: 13px;
+      color: #ccc;
+      line-height: 1.5;
+    }
+    .rule-icon {
+      font-size: 18px;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    /* ── Overlay (Win/Lose) ── */
+    #overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+    }
+    #overlay.show {
+      display: flex;
+    }
+    #overlay-box {
+      background: #16213e;
+      border-radius: 16px;
+      padding: 36px 40px;
+      text-align: center;
+      max-width: 340px;
+      width: 90%;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.7);
+    }
+    #overlay-icon { font-size: 52px; margin-bottom: 10px; }
+    #overlay-title { font-size: 1.6rem; font-weight: 700; margin-bottom: 8px; }
+    #overlay-sub { font-size: 13px; color: #aaa; margin-bottom: 20px; }
+    #overlay-score { font-size: 2rem; font-weight: 700; color: #ef9f27; margin-bottom: 20px; }
+    #overlay-btn {
+      padding: 12px 32px;
+      background: #378add;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    #overlay-btn:hover { background: #2e7ac7; }
+
+    /* ── Color Legend ── */
+    #color-legend {
+      margin-top: 14px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: center;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11px;
+      color: #aaa;
+    }
+    .legend-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 3px;
+    }
+
+    /* ── Footer ── */
+    footer {
+      margin-top: 28px;
+      font-size: 11px;
+      color: #444;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header>
+    <h1>&#9733; Color Chain Reaction</h1>
+    <p class="tagline">Click · Explode · Chain · Level Up</p>
+  </header>
+
+  <!-- Game Container -->
+  <div id="game-container">
+
+    <!-- Stats -->
+    <div id="stats-bar">
+      <div class="stat-box">
+        <div class="stat-label">Score</div>
+        <div class="stat-val" id="score">0</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Level</div>
+        <div class="stat-val" id="level-disp">1</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Best</div>
+        <div class="stat-val" id="best">0</div>
+      </div>
+    </div>
+
+    <!-- Targets -->
+    <div id="target-section">
+      <div id="target-label">Clear Targets</div>
+      <div id="target-bar"></div>
+    </div>
+
+    <!-- Moves -->
+    <div id="moves-section" style="margin-top:10px;">
+      <div id="moves-label">Moves Remaining</div>
+      <div id="moves-dots"></div>
+    </div>
+
+    <!-- Grid -->
+    <div id="grid"></div>
+
+    <!-- Message -->
+    <div id="msg"></div>
+
+    <!-- Buttons -->
+    <div id="btn-row">
+      <button class="action" onclick="newGame()">&#9654; New Game</button>
+      <button class="action danger" onclick="restart()">&#8635; Restart Level</button>
+    </div>
+
+    <!-- Color Legend -->
+    <div id="color-legend"></div>
+
+  </div>
+
+  <!-- How To Play -->
+  <div id="how-to-play">
+    <h2>How To Play</h2>
+    <div class="rule"><span class="rule-icon">🖱️</span><span><strong>Click</strong> any colored cell to explode it along with all connected cells of the same color. You need at least <strong>2 connected cells</strong> to trigger a chain.</span></div>
+    <div class="rule"><span class="rule-icon">🎯</span><span>Clear the <strong>color targets</strong> shown at the top before you run out of moves to advance to the next level.</span></div>
+    <div class="rule"><span class="rule-icon">⬇️</span><span><strong>Gravity</strong> kicks in after each explosion — remaining cells fall downward, creating new connections you can chain together!</span></div>
+    <div class="rule"><span class="rule-icon">💥</span><span><strong>Bigger chains = more points.</strong> Score = (cells)² × 10 × level multiplier. Clearing the full board gives a <strong>+500 bonus!</strong></span></div>
+    <div class="rule"><span class="rule-icon">📈</span><span>Each level introduces <strong>more colors</strong> and <strong>bigger required groups</strong>, making it progressively harder.</span></div>
+  </div>
+
+  <!-- Win/Lose Overlay -->
+  <div id="overlay">
+    <div id="overlay-box">
+      <div id="overlay-icon">🎉</div>
+      <div id="overlay-title">Level Complete!</div>
+      <div id="overlay-sub">Amazing chain reactions!</div>
+      <div id="overlay-score">0</div>
+      <button id="overlay-btn" onclick="closeOverlay()">Continue</button>
+    </div>
+  </div>
+
+  <footer>Color Chain Reaction &mdash; Built with HTML, CSS &amp; Vanilla JavaScript</footer>
+
+  <!-- ============================================================
+       GAME LOGIC
+  ============================================================ -->
+  <script>
+    // ── Color Definitions ──────────────────────────────────────
+    const COLORS = [
+      { name: 'Red',    bg: '#E24B4A' },
+      { name: 'Blue',   bg: '#378ADD' },
+      { name: 'Green',  bg: '#639922' },
+      { name: 'Amber',  bg: '#EF9F27' },
+      { name: 'Purple', bg: '#7F77DD' },
+      { name: 'Coral',  bg: '#D85A30' },
+    ];
+
+    const GRID_SIZE = 8;
+
+    // ── Game State ─────────────────────────────────────────────
+    let grid       = [];   // flat array, -1 = empty
+    let origGrid   = [];   // saved for restart
+    let score      = 0;
+    let best       = parseInt(localStorage.getItem('ccr_best') || '0');
+    let level      = 1;
+    let movesLeft  = 0;
+    let busy       = false;
+    let targets    = [];   // [{color, size}]
+    let targetsCleared = [];
+
+    // ── Level Config ───────────────────────────────────────────
+    function levelConfig(l) {
+      return {
+        colors: Math.min(2 + l, COLORS.length),
+        moves:  10 + Math.floor(l / 2) * 2,
+      };
+    }
+
+    // ── Grid Generation ────────────────────────────────────────
+    function generateGrid(l) {
+      const { colors } = levelConfig(l);
+      return Array.from({ length: GRID_SIZE * GRID_SIZE }, () =>
+        Math.floor(Math.random() * colors)
+      );
+    }
+
+    // ── Flood Fill ─────────────────────────────────────────────
+    function flood(g, start, color) {
+      const stack = [start];
+      const seen  = new Set([start]);
+      while (stack.length) {
+        const cur = stack.pop();
+        const row = Math.floor(cur / GRID_SIZE);
+        const col = cur % GRID_SIZE;
+        [[row-1,col],[row+1,col],[row,col-1],[row,col+1]].forEach(([r,c]) => {
+          if (r >= 0 && r < GRID_SIZE && c >= 0 && c < GRID_SIZE) {
+            const idx = r * GRID_SIZE + c;
+            if (!seen.has(idx) && g[idx] === color) {
+              seen.add(idx);
+              stack.push(idx);
+            }
+          }
+        });
+      }
+      return [...seen];
+    }
+
+    // ── Find Targets ───────────────────────────────────────────
+    function findTargets(g, colorCount) {
+      const visited = new Array(GRID_SIZE * GRID_SIZE).fill(false);
+      const found   = [];
+      for (let i = 0; i < GRID_SIZE * GRID_SIZE; i++) {
+        if (!visited[i] && g[i] !== -1) {
+          const group = flood(g, i, g[i]);
+          group.forEach(idx => visited[idx] = true);
+          if (group.length >= 3) {
+            const colorIdx = g[i];
+            if (!found.find(x => x.color === colorIdx))
+              found.push({ color: colorIdx, size: group.length });
+          }
+        }
+      }
+      return found.slice(0, 4);
+    }
+
+    // ── Gravity ────────────────────────────────────────────────
+    function applyGravity() {
+      for (let col = 0; col < GRID_SIZE; col++) {
+        const cells = [];
+        for (let row = GRID_SIZE - 1; row >= 0; row--) {
+          const v = grid[row * GRID_SIZE + col];
+          if (v !== -1) cells.push(v);
+        }
+        for (let row = GRID_SIZE - 1; row >= 0; row--) {
+          grid[row * GRID_SIZE + col] = cells.length ? cells.shift() : -1;
+        }
+      }
+    }
+
+    // ── Check Targets ──────────────────────────────────────────
+    function checkTargets() {
+      const visited = new Array(GRID_SIZE * GRID_SIZE).fill(false);
+      const groups  = [];
+      for (let i = 0; i < GRID_SIZE * GRID_SIZE; i++) {
+        if (!visited[i] && grid[i] !== -1) {
+          const g = flood(grid, i, grid[i]);
+          g.forEach(idx => visited[idx] = true);
+          groups.push({ color: grid[i], size: g.length });
+        }
+      }
+      targets.forEach((t, i) => {
+        if (!targetsCleared[i]) {
+          const still = groups.find(g => g.color === t.color && g.size >= t.size);
+          if (!still) targetsCleared[i] = true;
+        }
+      });
+    }
+
+    // ── Render Grid ────────────────────────────────────────────
+    function render() {
+      const gridEl = document.getElementById('grid');
+      gridEl.innerHTML = '';
+      for (let i = 0; i < GRID_SIZE * GRID_SIZE; i++) {
+        const cell = document.createElement('div');
+        cell.className = 'cell';
+        cell.dataset.idx = i;
+        if (grid[i] === -1) {
+          cell.classList.add('empty');
+        } else {
+          cell.style.background = COLORS[grid[i]].bg;
+          cell.addEventListener('click', () => clickCell(i));
+          cell.addEventListener('mouseenter', () => highlightGroup(i));
+          cell.addEventListener('mouseleave', clearHighlights);
+        }
+        gridEl.appendChild(cell);
+      }
+      renderTargets();
+      renderMoves();
+      renderLegend();
+      document.getElementById('score').textContent    = score;
+      document.getElementById('level-disp').textContent = level;
+      document.getElementById('best').textContent     = best;
+    }
+
+    // ── Highlight Connected Group on Hover ─────────────────────
+    function highlightGroup(idx) {
+      if (grid[idx] === -1) return;
+      const group = flood(grid, idx, grid[idx]);
+      if (group.length < 2) return;
+      group.forEach(i => {
+        const el = document.querySelector(`.cell[data-idx="${i}"]`);
+        if (el) el.classList.add('highlighted');
+      });
+    }
+
+    function clearHighlights() {
+      document.querySelectorAll('.cell.highlighted').forEach(el =>
+        el.classList.remove('highlighted')
+      );
+    }
+
+    // ── Render Targets ─────────────────────────────────────────
+    function renderTargets() {
+      const bar = document.getElementById('target-bar');
+      bar.innerHTML = '';
+      if (targets.length === 0) {
+        bar.innerHTML = '<span style="font-size:12px;color:#777;">No group targets this level</span>';
+        return;
+      }
+      targets.forEach((t, i) => {
+        const item = document.createElement('div');
+        item.className = 'target-item';
+
+        const tc = document.createElement('div');
+        tc.className = 'target-cell' + (targetsCleared[i] ? ' done' : '');
+        tc.style.background  = COLORS[t.color].bg;
+        tc.style.borderColor = targetsCleared[i] ? '#333' : COLORS[t.color].bg;
+
+        const sz = document.createElement('span');
+        sz.className = 'target-size';
+        sz.textContent = targetsCleared[i] ? 'done' : '×' + t.size;
+
+        item.appendChild(tc);
+        item.appendChild(sz);
+        bar.appendChild(item);
+      });
+    }
+
+    // ── Render Moves ───────────────────────────────────────────
+    function renderMoves() {
+      const bar   = document.getElementById('moves-dots');
+      const total = levelConfig(level).moves;
+      bar.innerHTML = '';
+      for (let i = 0; i < total; i++) {
+        const dot = document.createElement('div');
+        dot.className = 'move-dot' + (i >= movesLeft ? ' used' : '');
+        bar.appendChild(dot);
+      }
+      const lbl = document.createElement('span');
+      lbl.id = 'moves-count';
+      lbl.style.cssText = 'font-size:12px;color:#aaa;margin-left:8px;';
+      lbl.textContent = movesLeft + ' left';
+      bar.appendChild(lbl);
+    }
+
+    // ── Render Color Legend ────────────────────────────────────
+    function renderLegend() {
+      const leg  = document.getElementById('color-legend');
+      const { colors } = levelConfig(level);
+      leg.innerHTML = '';
+      for (let i = 0; i < colors; i++) {
+        const item = document.createElement('div');
+        item.className = 'legend-item';
+        const dot = document.createElement('div');
+        dot.className = 'legend-dot';
+        dot.style.background = COLORS[i].bg;
+        const lbl = document.createElement('span');
+        lbl.textContent = COLORS[i].name;
+        item.appendChild(dot);
+        item.appendChild(lbl);
+        leg.appendChild(item);
+      }
+    }
+
+    // ── Explode Animation ──────────────────────────────────────
+    function explodeCells(indices) {
+      return new Promise(resolve => {
+        const gridEl = document.getElementById('grid');
+        indices.forEach(i => {
+          const el = gridEl.querySelector(`.cell[data-idx="${i}"]`);
+          if (el) el.classList.add('exploding');
+        });
+        setTimeout(resolve, 300);
+      });
+    }
+
+    // ── Overlay ────────────────────────────────────────────────
+    function showOverlay(icon, title, sub, scoreVal, btnText) {
+      document.getElementById('overlay-icon').textContent  = icon;
+      document.getElementById('overlay-title').textContent = title;
+      document.getElementById('overlay-sub').textContent   = sub;
+      document.getElementById('overlay-score').textContent = scoreVal + ' pts';
+      document.getElementById('overlay-btn').textContent   = btnText;
+      document.getElementById('overlay').classList.add('show');
+    }
+
+    function closeOverlay() {
+      document.getElementById('overlay').classList.remove('show');
+    }
+
+    function setMsg(txt) {
+      document.getElementById('msg').textContent = txt;
+    }
+
+    function delay(ms) {
+      return new Promise(r => setTimeout(r, ms));
+    }
+
+    // ── Click Handler ──────────────────────────────────────────
+    async function clickCell(idx) {
+      if (busy || grid[idx] === -1 || movesLeft <= 0) return;
+
+      const color = grid[idx];
+      const group = flood(grid, idx, color);
+
+      if (group.length < 2) {
+        setMsg('Need at least 2 connected cells of the same color!');
+        return;
+      }
+
+      busy = true;
+      movesLeft--;
+
+      // Score calculation
+      const multiplier  = 1 + (level - 1) * 0.15;
+      const pts         = Math.round(group.length * group.length * 10 * multiplier);
+      score += pts;
+      if (score > best) {
+        best = score;
+        localStorage.setItem('ccr_best', best);
+      }
+
+      // Animate explosion
+      await explodeCells(group);
+      group.forEach(i => grid[i] = -1);
+      applyGravity();
+      checkTargets();
+      render();
+
+      const allEmpty        = grid.every(v => v === -1);
+      const allTargetsDone  = targetsCleared.every(Boolean);
+
+      // Board cleared bonus
+      if (allEmpty) {
+        score += 500;
+        if (score > best) { best = score; localStorage.setItem('ccr_best', best); }
+        showOverlay('🏆', 'Board Cleared!', 'Perfect play — +500 bonus!', score, 'Next Level →');
+        await delay(500);
+        level++;
+        startLevel();
+        busy = false;
+        return;
+      }
+
+      // All targets done
+      if (allTargetsDone) {
+        showOverlay('🎉', 'Level Complete!', 'All targets cleared!', score, 'Next Level →');
+        await delay(500);
+        level++;
+        startLevel();
+        busy = false;
+        return;
+      }
+
+      // Out of moves
+      if (movesLeft <= 0) {
+        await delay(400);
+        showOverlay('💔', 'Out of Moves!', 'Better luck next time.', score, 'Try Again');
+        await delay(300);
+        restart();
+        busy = false;
+        return;
+      }
+
+      setMsg('+' + pts + ' pts  (' + group.length + ' cells)');
+      busy = false;
+    }
+
+    // ── Game Controls ──────────────────────────────────────────
+    function newGame() {
+      closeOverlay();
+      level  = 1;
+      score  = 0;
+      startLevel();
+    }
+
+    function restart() {
+      closeOverlay();
+      grid            = [...origGrid];
+      movesLeft       = levelConfig(level).moves;
+      targetsCleared  = targets.map(() => false);
+      render();
+      setMsg('');
+    }
+
+    function startLevel() {
+      closeOverlay();
+      const cfg       = levelConfig(level);
+      movesLeft       = cfg.moves;
+      grid            = generateGrid(level);
+      origGrid        = [...grid];
+      targets         = findTargets(grid, cfg.colors);
+      targetsCleared  = targets.map(() => false);
+      render();
+      setMsg('Level ' + level + ' — clear all targets!');
+    }
+
+    // ── Keyboard Shortcut ──────────────────────────────────────
+    document.addEventListener('keydown', e => {
+      if (e.key === 'n' || e.key === 'N') newGame();
+      if (e.key === 'r' || e.key === 'R') restart();
+      if (e.key === 'Escape') closeOverlay();
+    });
+
+    // ── Start ──────────────────────────────────────────────────
+    newGame();
+  </script>
+</body>
+</html>
